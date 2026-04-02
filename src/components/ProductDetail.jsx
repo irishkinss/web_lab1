@@ -1,54 +1,101 @@
-// Карточка товара (детальный просмотр): открывается по клику на плитку. Показывает фото, название, категорию, цену и кнопку «В корзину»
-// Фото берётся из папки public/images/: имена файлов 1.jpg, 2.jpg, ... по id товара (можно .png — замените расширение ниже)
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { fetchProductById, addProductMock, deleteProductMock } from '../api/dummyJson';
+import { categoryLabelRu, localizeProductTitle } from '../i18n/ruCatalog';
+import ProductImage from './ProductImage';
+
+/** Не закрывать модалку тем же жестом, что открыл карточку (mouseup/click попадает на backdrop). */
+const BACKDROP_IGNORE_MS = 350;
 
 function ProductDetail({ product, onClose, onAddToCart }) {
-  const [imageError, setImageError] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [mockBusy, setMockBusy] = useState(false);
+  const ignoreBackdropUntilRef = useRef(0);
+
   useEffect(() => {
-    setImageError(false);
+    setDetail(null);
+    if (!product?.id) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const full = await fetchProductById(product.id);
+        if (!cancelled) setDetail(full);
+      } catch {
+        if (!cancelled) setDetail(product);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [product?.id]);
+
+  useEffect(() => {
+    if (!product?.id) return;
+    ignoreBackdropUntilRef.current = Date.now() + BACKDROP_IGNORE_MS;
+  }, [product?.id]);
+
+  const handleBackdropClose = () => {
+    if (Date.now() < ignoreBackdropUntilRef.current) return;
+    onClose();
+  };
+
+  // Все хуки до любого return — иначе при product=null и при открытой карточке разный порядок хуков и React ломает дерево (пустой экран).
+  const p = product ? detail || product : null;
+  const descriptionRu = useMemo(() => {
+    if (!p?.description) return '';
+    const capped = String(p.description).slice(0, 4000);
+    return localizeProductTitle(capped);
+  }, [p?.description]);
+
   if (!product) return null;
 
-  const imageUrl = `/images/${product.id}.jpg`;
-  const colors = ['#a7f3d0', '#6ee7b7', '#34d399', '#10b981', '#059669', '#047857'];
-  const bgColor = colors[product.id % colors.length];
+  const priceNum = Number(p.price ?? 0);
+  const priceLabel = `${priceNum.toLocaleString('ru-RU')} ₽`;
 
-  return (
+  const handleMockPost = async () => {
+    setMockBusy(true);
+    try {
+      const res = await addProductMock({
+        title: p.raw?.title ?? p.name,
+        price: p.raw?.price ?? p.price,
+      });
+      window.alert(`POST /products/add (mock): ${JSON.stringify(res)}`);
+    } catch (e) {
+      window.alert(String(e.message || e));
+    } finally {
+      setMockBusy(false);
+    }
+  };
+
+  const handleMockDelete = async () => {
+    setMockBusy(true);
+    try {
+      const res = await deleteProductMock(p.id);
+      window.alert(`DELETE /products/${p.id} (mock): ${JSON.stringify(res)}`);
+    } catch (e) {
+      window.alert(String(e.message || e));
+    } finally {
+      setMockBusy(false);
+    }
+  };
+
+  const modal = (
     <>
-      {/* Затемнённый фон: клик закрывает карточку */}
       <div
         role="button"
         tabIndex={0}
-        onClick={onClose}
+        onClick={handleBackdropClose}
         onKeyDown={(e) => e.key === 'Escape' && onClose()}
-        className="fixed inset-0 bg-black/50 z-40"
+        className="fixed inset-0 bg-black/60 z-[100]"
         aria-hidden="true"
       />
-      {/* Сама карточка по центру экрана */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+      <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 pt-24 pointer-events-none">
         <article
-          className="pointer-events-auto w-full max-w-md bg-white rounded-xl shadow-2xl overflow-hidden"
+          className="pointer-events-auto w-full max-w-md bg-white rounded-xl shadow-2xl overflow-hidden max-h-[85vh] overflow-y-auto border border-emerald-100"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Блок с фото: ваша картинка из public/images/{id}.jpg или заглушка, если файла нет */}
           <div className="relative aspect-[4/3] flex items-center justify-center bg-emerald-100">
-            {!imageError ? (
-              <img
-                src={imageUrl}
-                alt={product.name}
-                className="w-full h-full object-cover"
-                onError={() => setImageError(true)}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: bgColor }}>
-                <svg className="w-1/3 h-1/3 text-emerald-700/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span className="absolute bottom-2 left-2 right-2 text-center text-sm text-emerald-800/70 font-medium truncate px-2">
-                  {product.name}
-                </span>
-              </div>
-            )}
+            <ProductImage product={p} className="w-full h-full object-cover" alt={p.name} loading="eager" />
             <button
               type="button"
               onClick={onClose}
@@ -60,41 +107,66 @@ function ProductDetail({ product, onClose, onAddToCart }) {
               </svg>
             </button>
           </div>
-          {/* Текст и кнопки */}
           <div className="p-5">
             <span className="text-xs text-emerald-600 uppercase tracking-wide">
-              {product.category}
+              {categoryLabelRu(p.category)}
             </span>
             <h2 className="text-xl font-bold text-emerald-900 mt-1 mb-2">
-              {product.name}
+              {p.name}
             </h2>
+            {descriptionRu ? (
+              <p className="text-sm text-emerald-800/90 mb-3 line-clamp-6">{descriptionRu}</p>
+            ) : null}
             <p className="text-lg font-bold text-emerald-700 mb-4">
-              {product.price.toLocaleString('ru-RU')} ₽
+              {priceLabel}
             </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onAddToCart(product);
-                  onClose();
-                }}
-                className="flex-1 py-3 px-4 rounded-lg bg-emerald-500 text-white font-medium hover:bg-emerald-600 transition-colors"
-              >
-                В корзину
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="py-3 px-4 rounded-lg border border-emerald-300 text-emerald-700 font-medium hover:bg-emerald-50 transition-colors"
-              >
-                Закрыть
-              </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onAddToCart(p);
+                    onClose();
+                  }}
+                  className="flex-1 py-3 px-4 rounded-lg bg-emerald-500 text-white font-medium hover:bg-emerald-600 transition-colors"
+                >
+                  В корзину
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="py-3 px-4 rounded-lg border border-emerald-300 text-emerald-700 font-medium hover:bg-emerald-50 transition-colors"
+                >
+                  Закрыть
+                </button>
+              </div>
+              <p className="text-xs text-emerald-600 text-center">Клиент-сервер (mock API)</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={mockBusy}
+                  onClick={handleMockPost}
+                  className="flex-1 py-2 px-3 text-sm rounded-lg border border-emerald-400 text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+                >
+                  POST (добавить)
+                </button>
+                <button
+                  type="button"
+                  disabled={mockBusy}
+                  onClick={handleMockDelete}
+                  className="flex-1 py-2 px-3 text-sm rounded-lg border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50"
+                >
+                  DELETE
+                </button>
+              </div>
             </div>
           </div>
         </article>
       </div>
     </>
   );
+
+  return createPortal(modal, document.body);
 }
 
 export default ProductDetail;

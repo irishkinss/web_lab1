@@ -1,7 +1,9 @@
+import ProductImage from './ProductImage';
+
 // Боковая панель корзины. isOpen — открыта ли панель, onClose — закрыть, cartItems — массив { product, quantity }, onRemove — удалить позицию по id товара
 function CartSidebar({ isOpen, onClose, cartItems, onRemove }) {
   // Считаем общую сумму: для каждой позиции цена × количество, потом складываем
-  const total = cartItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const total = cartItems.reduce((sum, item) => sum + Number(item.product.price) * item.quantity, 0);
 
   return (
     <>
@@ -46,10 +48,14 @@ function CartSidebar({ isOpen, onClose, cartItems, onRemove }) {
                   key={item.product.id}
                   className="flex justify-between items-start gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-100"
                 >
+                  <ProductImage
+                    product={item.product}
+                    className="w-14 h-14 rounded-lg object-cover shrink-0 bg-white border border-emerald-100"
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-emerald-900 truncate">{item.product.name}</p>
                     <p className="text-sm text-emerald-600">
-                      {item.product.price.toLocaleString('ru-RU')} ₽ × {item.quantity}
+                      {Number(item.product.price).toLocaleString('ru-RU')} ₽ × {item.quantity}
                     </p>
                   </div>
                   {/* Кнопка удаления: передаём id товара в onRemove */}

@@ -15,7 +15,7 @@ function ProductList({ products, onAddToCart, onSelectProduct }) {
   // Рисуем сетку: на маленьком экране 1 колонка, на среднем 2, на большом 3, на очень большом 4
   // key={product.id} нужен React, чтобы различать карточки при обновлении списка
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch">
       {products.map((product) => (
         <ProductCard
           key={product.id}
